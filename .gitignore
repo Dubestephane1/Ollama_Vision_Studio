@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+backend/venv/
+
+# App runtime state
+backend/chat_history.db
+backend/chat_history.db-journal
+backend/chat_history.db-wal
+backend/chat_history.db-shm
+backend/uploads/
+backend/data/
+backend/logs/
+
+# Node
+node_modules/
+frontend/dist/
+.vite/
+
+# Env / secrets
+.env
+.env.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
