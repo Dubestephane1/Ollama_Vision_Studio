@@ -27,6 +27,10 @@ Then double-click:
 Requires **Python 3.11+** and **Node.js** already installed, plus
 [Ollama](https://ollama.com/download) running (`ollama serve`).
 
+<img src="images/Skills.png" alt="The Ollama Vision Studio welcome screen. The conversation sidebar sits on the left with New Conversation, recent chats grouped by recency, and an Ollama status badge showing 10 models installed. The main pane offers four suggested starting prompts: Scene Analysis, OCR and Transcription, Look Something Up, and Live News." width="900">
+
+*New chats open on a welcome screen with suggested prompts, and the sidebar keeps every conversation.*
+
 ---
 
 ## What the GUI can do
@@ -61,6 +65,10 @@ Hover any message to reveal its actions:
 - Replies render with **markdown**, **GFM tables** and **syntax-highlighted code**
 - Click the model pill under the composer to **switch model instantly**
 
+<img src="images/Stop_Copy_Delete_conversation.png" alt="A reply being generated. The composer shows a red Stop button, and hovering the user message reveals the Copy, Edit, Branch and Delete actions beneath it." width="900">
+
+*The send button turns red while the model is writing, and hovering any message reveals its actions.*
+
 ### Images and vision
 
 - Attach images by **file picker**, **drag-and-drop**, or **`Ctrl+V`** to paste a screenshot
@@ -80,6 +88,18 @@ Hover any message to reveal its actions:
 - **Per-conversation model binding** — each chat remembers the model it uses
 - Size, parameter count, quantisation and family shown for every model before you switch
 - Refresh on demand if you pull something from a terminal
+
+<img src="images/Switching_llm.png" alt="The Ollama Models and LLM Selector modal. It reports Ollama Service Online with 10 models installed locally, and openbmb/minicpm-v4.7:1b is marked as the current LLM with badges for 1.0B parameters, 1.7 GB on disk, the Qwen35 family and Q4_K_M quantisation. A search box filters by name, size or family." width="900">
+
+*Every installed model in one searchable list, with size, family and quantisation shown before you switch.*
+
+<img src="images/Pulling_llm.png" alt="The same selector while gemma4:31b is downloading. The button reads Pulling, a progress line shows pulling 6357a8a2d521 at 3 percent, and the installed model above offers a Switch To Model button." width="900">
+
+*Download progress is shown in place — switch to the new model the moment it lands.*
+
+<img src="images/Local_llm.png" alt="A chat answered by the local model minicpm-v4.7:1b. The reply reads Yes! I can code with Python, and the line beneath reports 91 tokens, 34.2 tokens per second and 6.0 seconds." width="900">
+
+*Per-reply statistics show tokens, tokens/sec and latency for the model that answered.*
 
 ### Tools the model can call
 
@@ -127,6 +147,10 @@ Open the gear icon in the header:
 
 Ollama cloud models such as `gemma4:31b-cloud`, `gemma4:cloud` and
 `deepseek-v4-flash:cloud` run on Ollama's servers.
+
+<img src="images/Cloud_llm.png" alt="A chat answered by the cloud model gemma4:31b-cloud, labelled 32.7B in the model pill. The sidebar shows conversations bound to different cloud and local models, and the Ollama status badge now reads 11 models." width="900">
+
+*Cloud and local models appear in the same list and the same sidebar — each conversation remembers the one it used.*
 
 **You almost certainly do not need an API key here.** The local Ollama daemon
 already authenticates with the account you signed into, so once you have run:
