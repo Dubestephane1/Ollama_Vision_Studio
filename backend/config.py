@@ -41,6 +41,11 @@ MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "5"))
 # How many times to probe a model for tool-calling support (cached per model).
 TOOL_PROBE_TIMEOUT = 20.0
 
+# Cap on the tokens the tool-support probe may generate. The probe only needs
+# the model to emit a short tool call; without a cap a model that cannot call
+# tools rambles for a whole generation and the probe costs several seconds.
+TOOL_PROBE_MAX_TOKENS = int(os.getenv("TOOL_PROBE_MAX_TOKENS", "24"))
+
 # ------------------------------------------------------------- Context -----
 # How many trailing messages (user+assistant pairs) are replayed to the model.
 HISTORY_MESSAGES = int(os.getenv("HISTORY_MESSAGES", "10"))

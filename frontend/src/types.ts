@@ -107,7 +107,7 @@ export type ChatEvent =
       duration_ms: number;
       summary: string;
     }
-  | { type: "chunk"; content: string }
+  | { type: "chunk"; content: string; replace?: boolean }
   | { type: "stats" } & RunStats
   | {
       type: "complete";
