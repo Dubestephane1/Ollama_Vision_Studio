@@ -108,13 +108,18 @@ decides for itself when to use them — you never have to ask explicitly.
 
 | Tool | Default | What it does |
 |---|---|---|
-| `calculator` | on | Exact arithmetic, trigonometry, roots — no guessing |
-| `wikipedia` | on | Article summaries and facts |
+| `grokipedia` | on | Article summaries from grokipedia.com, the open-source knowledge base |
 | `web_search` | on | Live news and web results from multiple sources |
 | `fetch_url` | on | Reads an actual web page and returns its text |
-| `image_metadata` | on | Dimensions, format, EXIF, GPS presence |
+| `calculator` | off | Exact arithmetic, trigonometry, roots — no guessing |
+| `image_metadata` | off | Dimensions, format, EXIF, GPS presence |
 | `system_info` | off | Host OS/CPU and Ollama status |
 | `filesystem` | off | Sandboxed, read-only search and file reading |
+
+`grokipedia`, `web_search` and `fetch_url` are on out of the box — those three
+and nothing else, so a new install can look things up, search the live web
+and read a page right away. Switch any of them off in the **Tools** modal
+and the choice is remembered; every other tool is opt-in.
 
 While it works you see a live **"Using tools…"** strip; afterwards the reply keeps a
 collapsible **"Used N tools"** panel listing each call, its arguments, its result
@@ -195,16 +200,20 @@ conversation — clear it in Settings → Parameters.
 ## Tool calling and small models
 
 Tool calling needs model support. The app **probes each model once**, caches the
-result, and falls back to plain chat when unsupported. You can override in
-Settings → System prompt:
+result on disk (so a restart does not probe again), and falls back to plain chat
+when unsupported. You can override in Settings → System prompt:
 
 - **Auto** — probe once, then cache *(default)*
 - **Always** — send tools even if the probe failed
 - **Never** — never offer tools
 
+Greetings and other small talk never need a tool, so they skip the probe and go
+straight to the model. A tool call is only made when the request actually needs
+live data.
+
 Four guards keep small models from stalling:
 
-1. **Name recovery.** Models often invent qualified names like `wikipedia.search`
+1. **Name recovery.** Models often invent qualified names like `grokipedia.search`
    or `calc`. The registry maps those back to the real skill instead of failing
    the turn.
 2. **Repeat detection.** If the model re-issues the same call, the cached result
@@ -290,7 +299,6 @@ All optional, via environment variables:
 | `MAX_IMAGES_PER_MESSAGE` | `8` | Image cap per message |
 | `UPLOAD_RETENTION_DAYS` | `30` | Age at which unreferenced uploads are swept |
 | `SKILLS_FS_ROOT` | `~/Documents` | `filesystem` skill sandbox root |
-| `WIKIPEDIA_USER_AGENT` | *(see skills/wikipedia.py)* | Wikimedia requires a contact URL |
 | `APP_TOKEN` | *(unset)* | If set, all `/api` calls need `X-App-Token` |
 
 ---
