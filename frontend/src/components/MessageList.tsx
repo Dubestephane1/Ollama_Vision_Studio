@@ -17,6 +17,7 @@ import {
   GitBranch,
   Scissors,
   Loader2,
+  ArrowDown,
 } from "lucide-react";
 import type { Message, ToolCall } from "../types";
 import { ToolCallPanel } from "./ToolCallPanel";
@@ -94,21 +95,80 @@ export const MessageList: React.FC<MessageListProps> = ({
   onBranch,
   onStop,
 }) => {
-  const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // True while the view is parked at the newest content.
+  const stickRef = useRef(true);
+  const prevCountRef = useRef(0);
+  const prevFirstIdRef = useRef<string | null>(null);
+  const lastScrollTopRef = useRef(0);
+  const [showJumpButton, setShowJumpButton] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
-  // Only auto-scroll when the user is already near the bottom, so scrolling
-  // back to read earlier messages is not yanked away mid-stream.
+  /**
+   * Note whether the user is reading further up the conversation, so we stop
+   * pulling them back down. Scrolling *up* releases the view; scrolling back
+   * to the bottom grabs it again. Scrolling down without reaching the bottom
+   * keeps following, the way chat apps behave.
+   */
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+
+    if (distance <= 80) {
+      stickRef.current = true;
+      setShowJumpButton(false);
+    } else if (el.scrollTop < lastScrollTopRef.current - 4) {
+      stickRef.current = false;
+      setShowJumpButton(true);
+    }
+
+    lastScrollTopRef.current = el.scrollTop;
+  };
+
+  /** Bring the newest message back into view on demand. */
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickRef.current = true;
+    setShowJumpButton(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  // Follow the conversation: jump to the newest message whenever one is
+  // added - even when the user had scrolled up to read something earlier -
+  // and keep the answer in view while the stream grows.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const nearBottom =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 220;
-    if (nearBottom || messages.length <= 1) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+
+    const count = messages.length;
+    const firstId = messages[0]?.id ?? null;
+    const newMessage = count > prevCountRef.current;
+    const newConversation = firstId !== prevFirstIdRef.current;
+    prevCountRef.current = count;
+    prevFirstIdRef.current = firstId;
+
+    if (newConversation) {
+      // A different conversation was opened - start at the end of it.
+      stickRef.current = true;
+      setShowJumpButton(false);
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+      return;
     }
+
+    if (newMessage) {
+      // A new message was posted: always scroll it into view.
+      stickRef.current = true;
+      setShowJumpButton(false);
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      return;
+    }
+
+    if (!stickRef.current) return; // user scrolled up; leave them there
+
+    // The answer is growing - keep the newest text in view.
+    el.scrollTo({ top: el.scrollHeight, behavior: "instant" });
   }, [messages, streamingText, statusText]);
 
   const beginEdit = (m: Message) => {
@@ -141,7 +201,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   if (messages.length === 0 && !isStreaming) {
     return (
-      <div className="messages-container" ref={scrollRef}>
+      <div className="messages-container" ref={scrollRef} onScroll={handleScroll}>
         <div className="empty-state">
           <div className="empty-icon-wrapper">
             <Sparkles size={32} color="#fff" />
@@ -187,7 +247,7 @@ export const MessageList: React.FC<MessageListProps> = ({
               className="starter-card"
               onClick={() =>
                 onSelectPrompt(
-                  "Who was Ada Lovelace? Use the wikipedia tool to check."
+                  "Who was Ada Lovelace? Use the grokipedia tool to check."
                 )
               }
             >
@@ -195,7 +255,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                 <HardDrive size={16} color="#10b981" />
                 <h4>Look Something Up</h4>
               </div>
-              <p>Let the model call Wikipedia or search the live web itself.</p>
+              <p>Let the model call Grokipedia or search the live web itself.</p>
             </div>
 
             <div
@@ -219,7 +279,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   }
 
   return (
-    <div className="messages-container" ref={scrollRef}>
+    <div className="messages-container" ref={scrollRef} onScroll={handleScroll}>
       {messages.map((msg, idx) => {
         const isUser = msg.role === "user";
         const isLast = idx === messages.length - 1;
@@ -396,7 +456,16 @@ export const MessageList: React.FC<MessageListProps> = ({
         </div>
       )}
 
-      <div ref={bottomRef} />
+      {showJumpButton && (
+        <button
+          className="jump-latest"
+          onClick={jumpToLatest}
+          title="Jump to the latest message"
+        >
+          <ArrowDown size={14} />
+          <span>Jump to latest</span>
+        </button>
+      )}
     </div>
   );
 };

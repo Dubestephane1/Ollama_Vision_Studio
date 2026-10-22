@@ -1569,6 +1569,35 @@ input:checked + .slider:before {
    ============================================================ */
 .messages-container { overflow-y: auto; }
 
+/* "Jump to latest" - sticks to the bottom of the scroll area while the
+   user is reading further up the conversation. */
+.jump-latest {
+  position: sticky;
+  bottom: 0.75rem;
+  align-self: center;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  margin-top: -0.75rem;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-main);
+  border: 1px solid var(--border-hover);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.jump-latest:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
 .bubble-wrap {
   display: flex;
   flex-direction: column;

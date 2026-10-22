@@ -22,7 +22,77 @@ import type {
 } from "./types";
 
 const MODEL_STORAGE_KEY = "ollama_selected_model";
-const SKILLS_STORAGE_KEY = "ollama_enabled_skills";
+const LEGACY_SKILLS_STORAGE_KEY = "ollama_enabled_skills";
+const SKILL_PREFS_STORAGE_KEY = "ollama_skill_prefs";
+
+/**
+ * Core tools that are switched on out of the box: read a web page, look an
+ * article up, search the live web. A fresh install - or one whose saved
+ * state predates these tools - starts with them enabled. They can still be
+ * turned off in the Tools modal; that choice is remembered.
+ */
+const DEFAULT_ON_SKILLS = ["fetch_url", "web_search", "grokipedia"];
+
+/**
+ * The skills that used to be on by default. A saved list from that era
+ * contains them whether or not the user ever picked them, so they are not
+ * carried over as "explicitly on" when the old state is migrated.
+ */
+const LEGACY_DEFAULT_SKILLS = [
+  "calculator",
+  "fetch_url",
+  "grokipedia",
+  "image_metadata",
+  "web_search",
+];
+
+interface SkillPrefs {
+  /** Skills the user explicitly turned on, on top of the defaults. */
+  enabled: string[];
+  /** Skills the user explicitly turned off. */
+  disabled: string[];
+}
+
+/**
+ * Read the saved skill preferences, migrating the legacy plain-array format.
+ *
+ * Legacy state was a flat list of every enabled skill name, including the
+ * tools that were on by default back then. Those carry no intent, so only
+ * the genuinely user-added tools are kept; the core tools are restored and
+ * everything else that used to be a default stays off.
+ */
+function loadSkillPrefs(): SkillPrefs {
+  try {
+    const raw = localStorage.getItem(SKILL_PREFS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.enabled) && Array.isArray(parsed?.disabled)) {
+        return { enabled: parsed.enabled, disabled: parsed.disabled };
+      }
+    }
+  } catch (e) {
+    console.warn("Could not read saved skill preferences:", e);
+  }
+
+  try {
+    const raw = localStorage.getItem(LEGACY_SKILLS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return {
+          enabled: parsed.filter((name) => !LEGACY_DEFAULT_SKILLS.includes(name)),
+          disabled: LEGACY_DEFAULT_SKILLS.filter(
+            (name) => !parsed.includes(name) && !DEFAULT_ON_SKILLS.includes(name)
+          ),
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("Could not read saved skills:", e);
+  }
+
+  return { enabled: [], disabled: [] };
+}
 
 export const App: React.FC = () => {
   const toast = useToast();
@@ -43,6 +113,7 @@ export const App: React.FC = () => {
 
   const [skills, setSkills] = useState<Skill[]>([]);
   const [activeSkills, setActiveSkills] = useState<string[]>([]);
+  const [skillPrefs, setSkillPrefs] = useState<SkillPrefs>({ enabled: [], disabled: [] });
   const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -101,17 +172,18 @@ export const App: React.FC = () => {
   const fetchSkills = useCallback(async () => {
     try {
       const data = await api.skills();
-      setSkills(data.skills || []);
-      const stored = localStorage.getItem(SKILLS_STORAGE_KEY);
-      if (stored) {
-        try {
-          setActiveSkills(JSON.parse(stored));
-        } catch {
-          setActiveSkills(data.default_enabled || []);
-        }
-      } else {
-        setActiveSkills(data.default_enabled || []);
-      }
+      const discovered = data.skills || [];
+      setSkills(discovered);
+      // Saved state can name a skill that no longer exists - drop those.
+      const known = new Set(discovered.map((s) => s.name));
+      const defaults = data.default_enabled || [];
+      const prefs = loadSkillPrefs();
+      setSkillPrefs(prefs);
+      setActiveSkills(
+        Array.from(new Set([...defaults, ...prefs.enabled, ...DEFAULT_ON_SKILLS])).filter(
+          (name) => known.has(name) && !prefs.disabled.includes(name)
+        )
+      );
     } catch (e) {
       console.error("Failed to load skills:", e);
     }
@@ -157,10 +229,35 @@ export const App: React.FC = () => {
     }
   }, [activeConvId, loadConversation]);
 
-  // Persist enabled skills so the choice survives a reload.
+  // Persist the user's skill choices so they survive a reload.
   useEffect(() => {
-    localStorage.setItem(SKILLS_STORAGE_KEY, JSON.stringify(activeSkills));
-  }, [activeSkills]);
+    localStorage.setItem(SKILL_PREFS_STORAGE_KEY, JSON.stringify(skillPrefs));
+  }, [skillPrefs]);
+
+  // Turn a tool on or off, remembering the choice as an explicit preference
+  // so the defaults (fetch_url, web_search, grokipedia) stay on until the
+  // user says otherwise.
+  const handleToggleSkill = useCallback(
+    (name: string) => {
+      const turningOff = activeSkills.includes(name);
+      setActiveSkills((prev) =>
+        turningOff ? prev.filter((s) => s !== name) : [...prev, name]
+      );
+      setSkillPrefs((prefs) => {
+        const enabled = new Set(prefs.enabled);
+        const disabled = new Set(prefs.disabled);
+        if (turningOff) {
+          disabled.add(name);
+          enabled.delete(name);
+        } else {
+          disabled.delete(name);
+          enabled.add(name);
+        }
+        return { enabled: [...enabled], disabled: [...disabled] };
+      });
+    },
+    [activeSkills]
+  );
 
   // ------------------------------------------------------------- actions --
   const handleSelectModel = useCallback(
@@ -347,7 +444,13 @@ export const App: React.FC = () => {
                 break;
 
               case "chunk":
-                accumulated += ev.content;
+                // A chunk with `replace` overwrites the buffer instead of
+                // appending - used to retract raw tool-call markup.
+                if (ev.replace) {
+                  accumulated = ev.content;
+                } else {
+                  accumulated += ev.content;
+                }
                 setStreamingText(accumulated);
                 break;
 
@@ -642,11 +745,7 @@ export const App: React.FC = () => {
         onClose={() => setIsSkillsModalOpen(false)}
         skills={skills}
         activeSkills={activeSkills}
-        onToggleSkill={(name) =>
-          setActiveSkills((prev) =>
-            prev.includes(name) ? prev.filter((s) => s !== name) : [...prev, name]
-          )
-        }
+        onToggleSkill={handleToggleSkill}
       />
 
       <ModelSelectorModal
