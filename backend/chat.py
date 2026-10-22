@@ -107,15 +107,28 @@ def cached_tool_support(model: str) -> Optional[bool]:
 # Some small models (e.g. MiniCPM, Llama variants) cannot use Ollama's native
 # JSON tool-calling but still emit function calls as raw text in a variety of
 # XML / JSON formats.  We parse those here so the agent loop can execute them.
+#
+# These models are careless with syntax: the closing tag is often the wrong
+# one (`</query>` instead of `</function>`) or missing altogether, and the
+# argument is often plain text instead of a tagged parameter.  The patterns
+# below are deliberately forgiving about all of that.
 
-_XML_FUNC_RE = re.compile(
-    r"<function=(?P<name>\w+)>\s*(?P<body>.*?)\s*</function>",
+# Well-formed: <function=name><param>value</param></function>
+_XML_FUNC_STRICT_RE = re.compile(
+    r"<function=(?P<name>\w+)\s*>(?P<body>.*?)\s*</function>",
+    re.DOTALL | re.IGNORECASE,
+)
+# Forgiving: the body ends at any closing tag, or at the end of the text.
+_XML_FUNC_LOOSE_RE = re.compile(
+    r"<function=(?P<name>\w+)\s*>(?P<body>.*?)(?:</\w+>|$)",
     re.DOTALL | re.IGNORECASE,
 )
 _XML_PARAM_RE = re.compile(
     r"<(?P<key>\w+)>\s*(?P<val>.*?)\s*</(?P=key)>",
     re.DOTALL,
 )
+# Any leftover XML-ish tag, used to clean up a malformed body.
+_XML_ANY_TAG_RE = re.compile(r"</?\w+[^>]*>")
 _TOOL_CALL_JSON_RE = re.compile(
     r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
     re.DOTALL | re.IGNORECASE,
@@ -124,6 +137,54 @@ _BARE_JSON_CALL_RE = re.compile(
     r'\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"(?:arguments|parameters|args)"\s*:\s*(\{[^{}]*\})\s*\}',
     re.DOTALL,
 )
+
+
+def _primary_arg(skill_name: str) -> str:
+    """The argument a skill mainly wants (e.g. 'query' or 'url')."""
+    skill = registry.get_skill(skill_name)
+    if skill:
+        props = (skill.parameters or {}).get("properties") or {}
+        for key in props:
+            return key
+    return "query"
+
+
+def _args_from_body(name: str, body: str) -> Dict[str, Any]:
+    """Turn the body of a text-mode call into skill arguments."""
+    body = (body or "").strip()
+
+    # 1. A JSON object: {"query": "..."}
+    try:
+        obj = json.loads(body)
+        if isinstance(obj, dict):
+            return obj
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2. Tagged parameters: <query>text</query>
+    params = {k: v for k, v in _XML_PARAM_RE.findall(body)}
+    if params:
+        return params
+
+    # 3. Plain text. Small models often skip the parameter tag and write the
+    #    value straight after the function name.
+    text = _XML_ANY_TAG_RE.sub(" ", body)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return {}
+    return {_primary_arg(name): text}
+
+
+def _strip_tool_markup(text: str) -> str:
+    """Remove tool-call markup so it never reaches the user as prose."""
+    for pat in (
+        _XML_FUNC_STRICT_RE,
+        _XML_FUNC_LOOSE_RE,
+        _TOOL_CALL_JSON_RE,
+        _BARE_JSON_CALL_RE,
+    ):
+        text = pat.sub("", text)
+    return text.strip()
 
 
 def _parse_text_tool_calls(text: str) -> List[Dict[str, Any]]:
@@ -136,20 +197,19 @@ def _parse_text_tool_calls(text: str) -> List[Dict[str, Any]]:
     calls: List[Dict[str, Any]] = []
 
     # Format 1: <function=name><param>value</param>…</function>
-    for m in _XML_FUNC_RE.finditer(text):
-        name = m.group("name")
-        body = m.group("body")
-        # Try to parse body as JSON first.
-        try:
-            args = json.loads(body)
-            if isinstance(args, dict):
-                calls.append({"name": name, "arguments": args})
+    # The strict pattern is tried first. The forgiving one then picks up the
+    # calls whose closing tag is wrong or missing, without re-reporting the
+    # ones the strict pattern already covered.
+    spans: List[tuple] = []
+    for pattern in (_XML_FUNC_STRICT_RE, _XML_FUNC_LOOSE_RE):
+        for m in pattern.finditer(text):
+            if any(m.start() < end and start < m.end() for start, end in spans):
                 continue
-        except (json.JSONDecodeError, ValueError):
-            pass
-        # Fall back to XML param tags.
-        params = {k: v for k, v in _XML_PARAM_RE.findall(body)}
-        calls.append({"name": name, "arguments": params})
+            spans.append((m.start(), m.end()))
+            name = m.group("name")
+            calls.append(
+                {"name": name, "arguments": _args_from_body(name, m.group("body"))}
+            )
 
     if calls:
         return calls
@@ -473,27 +533,22 @@ async def run_agent(cfg: ChatConfig) -> AsyncIterator[Dict[str, Any]]:
             # in the prompt, markup like that is just text.
             if not pending and not forced_final and tools and full_text.strip():
                 text_calls = _parse_text_tool_calls(full_text)
-                # Only act on calls whose skill name we actually know.
-                text_calls = [
-                    c for c in text_calls if registry.resolve_name(c["name"])
-                ]
                 if text_calls:
-                    # The text the model emitted was the "thinking" portion
-                    # before the call, or is just the raw call markup itself.
-                    # Strip the call syntax so we don't show it to the user.
-                    clean = full_text
-                    for pat in (_XML_FUNC_RE, _TOOL_CALL_JSON_RE, _BARE_JSON_CALL_RE):
-                        clean = pat.sub("", clean).strip()
-
-                    # The raw markup has already been streamed to the client.
-                    # Send a correction chunk that replaces it in place, so
-                    # the call syntax never sits in the chat as prose.
+                    # The raw call syntax has already been streamed to the
+                    # client. Retract it, whatever happens next, so it never
+                    # sits in the chat as prose.
+                    clean = _strip_tool_markup(full_text)
                     if clean != full_text:
                         yield {"type": "chunk", "content": clean, "replace": True}
-                    full_text = clean
+                        full_text = clean
 
                     for tc in text_calls:
-                        pending[tc["name"]] = tc
+                        # Map invented names onto the real skill. An unknown
+                        # name is kept as is: the registry reports it as an
+                        # error, which counts towards the "stuck" guard.
+                        resolved = registry.resolve_name(tc["name"])
+                        name = resolved or tc["name"]
+                        pending[name] = {"name": name, "arguments": tc["arguments"] or {}}
 
             # ----------------------------------------------------------------
 
@@ -593,10 +648,12 @@ async def run_agent(cfg: ChatConfig) -> AsyncIterator[Dict[str, Any]]:
                 else:
                     # Text-mode: Ollama won't accept role:tool without tools in
                     # the request.  Inject as an assistant+user exchange instead.
+                    primary = _primary_arg(name)
+                    value = args.get(primary) or args.get("query") or json.dumps(args)
                     messages.append(
                         {
                             "role": "assistant",
-                            "content": f"<function={name}><query>{args.get('query', json.dumps(args))}</query></function>",
+                            "content": f"<function={name}><{primary}>{value}</{primary}></function>",
                         }
                     )
                     messages.append(

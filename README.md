@@ -211,18 +211,25 @@ Greetings and other small talk never need a tool, so they skip the probe and go
 straight to the model. A tool call is only made when the request actually needs
 live data.
 
-Four guards keep small models from stalling:
+Five guards keep small models from stalling:
 
 1. **Name recovery.** Models often invent qualified names like `grokipedia.search`
    or `calc`. The registry maps those back to the real skill instead of failing
    the turn.
-2. **Repeat detection.** If the model re-issues the same call, the cached result
+2. **Forgiving call parsing.** Models that cannot call tools natively write the
+   call as text, and they write it badly: the closing tag is often wrong
+   (`</query>` instead of `</function>`) or missing, and the argument is often
+   plain text rather than a tagged parameter. The parser accepts all of that.
+3. **Repeat detection.** If the model re-issues the same call, the cached result
    is reused rather than paid for twice.
-3. **Forced final answer.** After two repeats — or two failures — tools are
+4. **Forced final answer.** After two repeats — or two failures — tools are
    withheld and any further call is refused, so the model must answer in prose.
-4. **Last-resort summarisation.** If the loop ends with no text at all, one final
+5. **Last-resort summarisation.** If the loop ends with no text at all, one final
    tool-free pass runs with an explicit "answer now" instruction, so you get an
    answer instead of silence.
+
+Whatever the model writes, the raw call syntax is retracted from the chat as
+soon as it is recognised — you never see the XML, only the tool and the answer.
 
 ---
 
