@@ -49,6 +49,7 @@ def html_to_text(html: str) -> str:
 class FetchUrlSkill(BaseSkill):
     name: str = "fetch_url"
     display_name: str = "Web Page Reader"
+    enabled_by_default: bool = True
     description: str = (
         "Fetch a web page and return its readable text content. Call this after a "
         "web search when you need the details of a specific article, or whenever "

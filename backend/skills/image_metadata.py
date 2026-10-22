@@ -11,6 +11,7 @@ from backend.skills.base import BaseSkill, SkillContext
 class ImageMetadataSkill(BaseSkill):
     name: str = "image_metadata"
     display_name: str = "Image Analyzer & Metadata"
+    enabled_by_default: bool = False  # Opt-in: switch it on in the Tools modal.
     description: str = (
         "Extract dimensions, format, color mode, file size, and EXIF tags from an image. "
         "Call this when the user asks about an image's resolution, format, quality, "

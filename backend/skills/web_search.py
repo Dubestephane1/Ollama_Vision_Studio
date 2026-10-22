@@ -40,6 +40,7 @@ def strip_html(html: str) -> str:
 class WebSearchSkill(BaseSkill):
     name: str = "web_search"
     display_name: str = "Live Web & News Search"
+    enabled_by_default: bool = True
     description: str = (
         "Search the live web for current information and news. Returns headlines "
         "with sources and dates, plus a short abstract. Call this for anything "

@@ -577,7 +577,7 @@ async def get_skills():
 
 @app.post("/api/skills/execute")
 async def run_skill(req: ExecuteSkillRequest):
-    # resolve_name tolerates qualified names like "wikipedia.search" that small
+    # resolve_name tolerates qualified names like "grokipedia.search" that small
     # models invent; without it the request 404s before the registry can cope.
     resolved = registry.resolve_name(req.skill_name)
     if not resolved:

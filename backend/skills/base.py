@@ -82,8 +82,8 @@ class SkillRegistry:
     def resolve_name(self, name: str) -> Optional[str]:
         """Map a model-supplied tool name to a real skill name.
 
-        Small models frequently invent qualified names like ``wikipedia.search``
-        or ``wikipedia:search``. Rather than failing the turn, try to recover the
+        Small models frequently invent qualified names like ``grokipedia.search``
+        or ``grokipedia:search``. Rather than failing the turn, try to recover the
         real skill. Returns None when nothing plausible matches.
         """
         if not name:
@@ -91,7 +91,7 @@ class SkillRegistry:
         if name in self.skills:
             return name
 
-        # Strip a namespace/qualifier: "wikipedia.search" -> "wikipedia".
+        # Strip a namespace/qualifier: "grokipedia.search" -> "grokipedia".
         head = re.split(r"[.:/\s]", name, maxsplit=1)[0]
         if head in self.skills:
             return head

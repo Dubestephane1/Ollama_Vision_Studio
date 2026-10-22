@@ -69,6 +69,7 @@ MAX_EXPONENT = 1000
 class CalculatorSkill(BaseSkill):
     name: str = "calculator"
     display_name: str = "Safe Calculator"
+    enabled_by_default: bool = False  # Opt-in: switch it on in the Tools modal.
     description: str = (
         "Evaluate a mathematical expression exactly. Call this for any arithmetic, "
         "unit conversion, percentages, trigonometry or roots so results are exact "
